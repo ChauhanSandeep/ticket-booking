@@ -15,32 +15,33 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
+@RequestMapping("/api/v1")
 @RequiredArgsConstructor
 @Tag(name = "Bookings", description = "Booking confirmation and management")
 public class BookingController {
 
     private final BookingService bookingService;
 
-    @PostMapping("/api/v1/bookings")
+    @PostMapping("/bookings")
     @Operation(summary = "Confirm booking from hold", description = "Converts a valid hold into a permanent booking. Hold must be ACTIVE and not expired.")
     public ResponseEntity<BookingResponse> confirmBooking(@Valid @RequestBody ConfirmBookingRequest request) {
         BookingResponse response = bookingService.confirmBooking(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @GetMapping("/api/v1/bookings/{bookingReference}")
+    @GetMapping("/bookings/{bookingReference}")
     @Operation(summary = "Get booking details")
     public ResponseEntity<BookingResponse> getBooking(@PathVariable UUID bookingReference) {
         return ResponseEntity.ok(bookingService.getBooking(bookingReference));
     }
 
-    @GetMapping("/api/v1/users/{userId}/bookings")
+    @GetMapping("/users/{userId}/bookings")
     @Operation(summary = "Get all bookings for a user")
     public ResponseEntity<List<BookingResponse>> getUserBookings(@PathVariable String userId) {
         return ResponseEntity.ok(bookingService.getUserBookings(userId));
     }
 
-    @PatchMapping("/api/v1/bookings/{bookingReference}/cancel")
+    @PatchMapping("/bookings/{bookingReference}/cancel")
     @Operation(summary = "Cancel booking", description = "Soft-deletes the booking (marks as CANCELED) and releases seats back to AVAILABLE")
     public ResponseEntity<BookingResponse> cancelBooking(@PathVariable UUID bookingReference) {
         return ResponseEntity.ok(bookingService.cancelBooking(bookingReference));
