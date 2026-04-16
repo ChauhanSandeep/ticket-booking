@@ -87,7 +87,7 @@ public class EventService {
             throw new EventDeletionException(eventId);
         }
 
-        seatRepository.deleteAll(seatRepository.findByEventId(eventId));
+        seatRepository.deleteByEventId(eventId);
         eventRepository.delete(event);
         log.info("Event deleted: id={}, name='{}'", eventId, event.getName());
     }
