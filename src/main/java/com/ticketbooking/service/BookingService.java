@@ -21,7 +21,9 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -117,14 +119,25 @@ public class BookingService {
 
     @Transactional(readOnly = true)
     public List<BookingResponse> getUserBookings(String userId) {
-        return bookingRepository.findByUserId(userId).stream()
-                .map(booking -> {
-                    List<String> seatNumbers = seatRepository.findByBookingId(booking.getId()).stream()
-                            .map(Seat::getSeatNumber)
-                            .sorted(Comparator.comparingInt(Integer::parseInt))
-                            .toList();
-                    return toBookingResponse(booking, seatNumbers);
-                })
+        List<Booking> bookings = bookingRepository.findByUserId(userId);
+        if (bookings.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> bookingIds = bookings.stream().map(Booking::getId).toList();
+        Map<Long, List<String>> seatsByBookingId = seatRepository.findByBookingIdIn(bookingIds).stream()
+                .collect(Collectors.groupingBy(
+                        seat -> seat.getBooking().getId(),
+                        Collectors.collectingAndThen(
+                                Collectors.mapping(Seat::getSeatNumber, Collectors.toList()),
+                                seats -> seats.stream()
+                                        .sorted(Comparator.comparingInt(Integer::parseInt))
+                                        .toList()
+                        )
+                ));
+
+        return bookings.stream()
+                .map(booking -> toBookingResponse(booking, seatsByBookingId.getOrDefault(booking.getId(), List.of())))
                 .toList();
     }
 
