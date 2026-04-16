@@ -14,7 +14,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,9 +37,17 @@ class HoldCleanupServiceTest {
 
     @Mock
     private SeatRepository seatRepository;
+    @Mock
+    private Clock clock;
 
     @InjectMocks
     private HoldCleanupService holdCleanupService;
+
+    private void setupClock() {
+        Instant fixedInstant = Instant.parse("2026-06-01T12:00:00Z");
+        when(clock.instant()).thenReturn(fixedInstant);
+        when(clock.getZone()).thenReturn(ZoneId.systemDefault());
+    }
 
     private Event createEvent() {
         return Event.builder().id(1L).name("Concert").location("NYC")
@@ -46,6 +57,7 @@ class HoldCleanupServiceTest {
 
     @Test
     void releaseExpiredHoldsForEvent_shouldExpireActiveHoldsAndReleaseSeats() {
+        setupClock();
         Event event = createEvent();
         SeatHold expiredHold = SeatHold.builder()
                 .id(1L).holdId(UUID.randomUUID()).event(event).userId("user-1")
@@ -72,6 +84,7 @@ class HoldCleanupServiceTest {
 
     @Test
     void releaseExpiredHoldsForEvent_shouldSkipConfirmedHolds() {
+        setupClock();
         Event event = createEvent();
         SeatHold confirmedHold = SeatHold.builder()
                 .id(1L).holdId(UUID.randomUUID()).event(event).userId("user-1")
@@ -90,6 +103,7 @@ class HoldCleanupServiceTest {
 
     @Test
     void releaseExpiredHoldsForEvent_shouldHandleNoExpiredHolds() {
+        setupClock();
         Event event = createEvent();
 
         when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));

@@ -20,7 +20,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,9 +44,17 @@ class HoldServiceTest {
 
     @Mock
     private SeatHoldRepository seatHoldRepository;
+    @Mock
+    private Clock clock;
 
     @InjectMocks
     private HoldService holdService;
+
+    private void setupClock() {
+        Instant fixedInstant = Instant.parse("2026-06-01T12:00:00Z");
+        when(clock.instant()).thenReturn(fixedInstant);
+        when(clock.getZone()).thenReturn(ZoneId.systemDefault());
+    }
 
     private Event createTestEvent() {
         return Event.builder()
@@ -61,6 +72,7 @@ class HoldServiceTest {
 
     @Test
     void holdSeats_shouldSucceed() {
+        setupClock();
         Event event = createTestEvent();
         List<Seat> seats = List.of(
                 createSeat(event, "1", SeatStatus.AVAILABLE),

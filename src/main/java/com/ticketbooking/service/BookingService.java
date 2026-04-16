@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -30,6 +31,7 @@ public class BookingService {
     private final SeatRepository seatRepository;
     private final SeatHoldRepository seatHoldRepository;
     private final BookingRepository bookingRepository;
+    private final Clock clock;
 
     @Transactional
     public BookingResponse confirmBooking(ConfirmBookingRequest request) {
@@ -57,7 +59,7 @@ public class BookingService {
         }
 
         // Check if hold has expired by time (cleanup may not have run yet)
-        if (hold.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (hold.getExpiresAt().isBefore(LocalDateTime.now(clock))) {
             hold.setStatus(HoldStatus.EXPIRED);
             seatHoldRepository.save(hold);
             releaseSeatsForHold(hold);
@@ -148,7 +150,7 @@ public class BookingService {
 
         // Soft delete: mark as canceled
         booking.setStatus(BookingStatus.CANCELED);
-        booking.setCanceledAt(LocalDateTime.now());
+        booking.setCanceledAt(LocalDateTime.now(clock));
         bookingRepository.save(booking);
 
         // Release seats back to AVAILABLE

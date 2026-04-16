@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -31,6 +32,7 @@ public class HoldService {
     private final EventRepository eventRepository;
     private final SeatRepository seatRepository;
     private final SeatHoldRepository seatHoldRepository;
+    private final Clock clock;
 
     @Transactional
     public HoldResponse holdSeats(Long eventId, HoldSeatsRequest request) {
@@ -74,7 +76,7 @@ public class HoldService {
                 .event(event)
                 .userId(request.getUserId())
                 .status(HoldStatus.ACTIVE)
-                .expiresAt(LocalDateTime.now().plusMinutes(HOLD_DURATION_MINUTES))
+                .expiresAt(LocalDateTime.now(clock).plusMinutes(HOLD_DURATION_MINUTES))
                 .build();
         hold = seatHoldRepository.save(hold);
 

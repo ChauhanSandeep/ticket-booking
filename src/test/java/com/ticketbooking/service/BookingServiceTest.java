@@ -20,7 +20,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -42,9 +45,17 @@ class BookingServiceTest {
     private SeatHoldRepository seatHoldRepository;
     @Mock
     private BookingRepository bookingRepository;
+    @Mock
+    private Clock clock;
 
     @InjectMocks
     private BookingService bookingService;
+
+    private void setupClock() {
+        Instant fixedInstant = Instant.parse("2026-06-01T12:00:00Z");
+        when(clock.instant()).thenReturn(fixedInstant);
+        when(clock.getZone()).thenReturn(ZoneId.systemDefault());
+    }
 
     private Event createEvent() {
         return Event.builder().id(1L).name("Concert").location("NYC")
@@ -61,6 +72,7 @@ class BookingServiceTest {
 
     @Test
     void confirmBooking_shouldSucceed() {
+        setupClock();
         Event event = createEvent();
         SeatHold hold = createActiveHold(event);
         UUID holdUuid = hold.getHoldId();
@@ -92,6 +104,7 @@ class BookingServiceTest {
 
     @Test
     void confirmBooking_shouldThrowWhenHoldExpiredByTime() {
+        setupClock();
         Event event = createEvent();
         SeatHold hold = SeatHold.builder().id(1L).holdId(UUID.randomUUID()).event(event)
                 .userId("user-1").status(HoldStatus.ACTIVE)
@@ -144,6 +157,7 @@ class BookingServiceTest {
 
     @Test
     void cancelBooking_shouldSoftDelete() {
+        setupClock();
         Event event = createEvent();
         UUID bookingRef = UUID.randomUUID();
         Booking booking = Booking.builder().id(1L).bookingReference(bookingRef)

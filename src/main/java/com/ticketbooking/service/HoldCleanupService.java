@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -25,6 +26,7 @@ public class HoldCleanupService {
     private final EventRepository eventRepository;
     private final SeatHoldRepository seatHoldRepository;
     private final SeatRepository seatRepository;
+    private final Clock clock;
 
     /**
      * Runs every 60 seconds to clean up expired holds.
@@ -37,7 +39,7 @@ public class HoldCleanupService {
         log.info("Starting expired hold cleanup");
 
         List<Long> eventIds = seatHoldRepository.findDistinctEventIdsWithExpiredHolds(
-                HoldStatus.ACTIVE, LocalDateTime.now());
+                HoldStatus.ACTIVE, LocalDateTime.now(clock));
 
         int totalReleased = 0;
         for (Long eventId : eventIds) {
@@ -60,7 +62,7 @@ public class HoldCleanupService {
         eventRepository.findByIdWithLock(eventId);
 
         List<SeatHold> expiredHolds = seatHoldRepository.findByEventIdAndStatusAndExpiresAtBefore(
-                eventId, HoldStatus.ACTIVE, LocalDateTime.now());
+                eventId, HoldStatus.ACTIVE, LocalDateTime.now(clock));
 
         int released = 0;
         for (SeatHold hold : expiredHolds) {
