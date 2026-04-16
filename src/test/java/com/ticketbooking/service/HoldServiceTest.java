@@ -14,11 +14,13 @@ import com.ticketbooking.exception.SeatsUnavailableException;
 import com.ticketbooking.repository.EventRepository;
 import com.ticketbooking.repository.SeatHoldRepository;
 import com.ticketbooking.repository.SeatRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -49,6 +51,11 @@ class HoldServiceTest {
 
     @InjectMocks
     private HoldService holdService;
+
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(holdService, "holdDurationMinutes", 5);
+    }
 
     private void setupClock() {
         Instant fixedInstant = Instant.parse("2026-06-01T12:00:00Z");

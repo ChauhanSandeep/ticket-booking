@@ -31,3 +31,7 @@ spring:
 
 server:
   port: 8080
+
+booking:
+  hold:
+    duration-minutes: 5

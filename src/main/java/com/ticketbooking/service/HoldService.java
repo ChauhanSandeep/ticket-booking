@@ -15,6 +15,7 @@ import com.ticketbooking.repository.EventRepository;
 import com.ticketbooking.repository.SeatHoldRepository;
 import com.ticketbooking.repository.SeatRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,7 +28,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class HoldService {
 
-    private static final int HOLD_DURATION_MINUTES = 5;
+    @Value("${booking.hold.duration-minutes:5}")
+    private int holdDurationMinutes;
 
     private final EventRepository eventRepository;
     private final SeatRepository seatRepository;
@@ -76,7 +78,7 @@ public class HoldService {
                 .event(event)
                 .userId(request.getUserId())
                 .status(HoldStatus.ACTIVE)
-                .expiresAt(LocalDateTime.now(clock).plusMinutes(HOLD_DURATION_MINUTES))
+                .expiresAt(LocalDateTime.now(clock).plusMinutes(holdDurationMinutes))
                 .build();
         hold = seatHoldRepository.save(hold);
 
