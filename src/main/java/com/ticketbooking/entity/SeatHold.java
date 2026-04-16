@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 @Entity
@@ -44,5 +45,17 @@ public class SeatHold {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof SeatHold seatHold)) return false;
+        return holdId != null && holdId.equals(seatHold.holdId);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(holdId);
     }
 }

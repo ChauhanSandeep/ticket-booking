@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 @Entity
@@ -48,5 +49,17 @@ public class Booking {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Booking booking)) return false;
+        return bookingReference != null && bookingReference.equals(booking.bookingReference);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(bookingReference);
     }
 }
