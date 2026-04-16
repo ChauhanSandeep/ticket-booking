@@ -14,6 +14,7 @@ import com.ticketbooking.repository.EventRepository;
 import com.ticketbooking.repository.SeatHoldRepository;
 import com.ticketbooking.repository.SeatRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class BookingService {
 
     private final EventRepository eventRepository;
@@ -87,6 +89,8 @@ public class BookingService {
                 .hold(hold)
                 .build();
         booking = bookingRepository.save(booking);
+        log.info("Booking confirmed: ref={}, holdId={}, userId={}, eventId={}",
+                booking.getBookingReference(), hold.getHoldId(), hold.getUserId(), eventId);
 
         // Transition seats from HELD to BOOKED
         List<Seat> seats = seatRepository.findByHoldId(hold.getId());
@@ -161,10 +165,11 @@ public class BookingService {
             throw new BookingAlreadyCanceledException(bookingReference);
         }
 
-        // Soft delete: mark as canceled
         booking.setStatus(BookingStatus.CANCELED);
         booking.setCanceledAt(LocalDateTime.now(clock));
         bookingRepository.save(booking);
+        log.info("Booking canceled: ref={}, userId={}, eventId={}",
+                bookingReference, booking.getUserId(), eventId);
 
         // Release seats back to AVAILABLE
         List<Seat> seats = seatRepository.findByBookingId(booking.getId());

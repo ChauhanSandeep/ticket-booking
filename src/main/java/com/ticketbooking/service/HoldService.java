@@ -15,6 +15,7 @@ import com.ticketbooking.repository.EventRepository;
 import com.ticketbooking.repository.SeatHoldRepository;
 import com.ticketbooking.repository.SeatRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +27,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class HoldService {
 
     @Value("${booking.hold.duration-minutes:5}")
@@ -81,6 +83,8 @@ public class HoldService {
                 .expiresAt(LocalDateTime.now(clock).plusMinutes(holdDurationMinutes))
                 .build();
         hold = seatHoldRepository.save(hold);
+        log.info("Hold created: holdId={}, userId={}, eventId={}, seats={}, expiresAt={}",
+                hold.getHoldId(), request.getUserId(), eventId, seatNumbers, hold.getExpiresAt());
 
         // Mark seats as HELD
         for (Seat seat : seats) {

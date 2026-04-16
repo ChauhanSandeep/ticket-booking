@@ -15,6 +15,7 @@ import com.ticketbooking.repository.EventRepository;
 import com.ticketbooking.repository.SeatHoldRepository;
 import com.ticketbooking.repository.SeatRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EventService {
 
     private final EventRepository eventRepository;
@@ -42,6 +44,7 @@ public class EventService {
 
         event = eventRepository.save(event);
         createSeatsForEvent(event);
+        log.info("Event created: id={}, name='{}', totalSeats={}", event.getId(), event.getName(), event.getTotalSeats());
 
         return toEventResponse(event);
     }
@@ -86,6 +89,7 @@ public class EventService {
 
         seatRepository.deleteAll(seatRepository.findByEventId(eventId));
         eventRepository.delete(event);
+        log.info("Event deleted: id={}, name='{}'", eventId, event.getName());
     }
 
     private void createSeatsForEvent(Event event) {
