@@ -51,7 +51,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
-    @ExceptionHandler({DuplicateHoldException.class, DuplicateBookingException.class,
+    @ExceptionHandler({DuplicateHoldException.class,
             EventDeletionException.class, BookingAlreadyCanceledException.class})
     public ResponseEntity<ErrorResponse> handleConflict(RuntimeException ex,
                                                          HttpServletRequest request) {

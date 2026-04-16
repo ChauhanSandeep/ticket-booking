@@ -5,7 +5,6 @@ import com.ticketbooking.entity.Seat;
 import com.ticketbooking.entity.SeatHold;
 import com.ticketbooking.entity.enums.HoldStatus;
 import com.ticketbooking.entity.enums.SeatStatus;
-import com.ticketbooking.repository.EventRepository;
 import com.ticketbooking.repository.SeatHoldRepository;
 import com.ticketbooking.repository.SeatRepository;
 import org.junit.jupiter.api.Test;
@@ -28,9 +27,6 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class HoldCleanupServiceTest {
-
-    @Mock
-    private EventRepository eventRepository;
 
     @Mock
     private SeatHoldRepository seatHoldRepository;
@@ -56,7 +52,7 @@ class HoldCleanupServiceTest {
     }
 
     @Test
-    void releaseExpiredHoldsForEvent_shouldExpireActiveHoldsAndReleaseSeats() {
+    void releaseHoldIfExpired_shouldExpireActiveHoldAndReleaseSeats() {
         setupClock();
         Event event = createEvent();
         SeatHold expiredHold = SeatHold.builder()
@@ -67,13 +63,11 @@ class HoldCleanupServiceTest {
         Seat seat1 = Seat.builder().id(1L).event(event).seatNumber("1").status(SeatStatus.HELD).hold(expiredHold).build();
         Seat seat2 = Seat.builder().id(2L).event(event).seatNumber("2").status(SeatStatus.HELD).hold(expiredHold).build();
 
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
-        when(seatHoldRepository.findByEventIdAndStatusAndExpiresAtBefore(eq(1L), eq(HoldStatus.ACTIVE), any()))
-                .thenReturn(List.of(expiredHold));
+        when(seatHoldRepository.findByIdWithLock(1L)).thenReturn(Optional.of(expiredHold));
         when(seatRepository.findByHoldId(1L)).thenReturn(List.of(seat1, seat2));
         when(seatRepository.saveAll(anyList())).thenReturn(List.of(seat1, seat2));
 
-        int released = holdCleanupService.releaseExpiredHoldsForEvent(1L);
+        int released = holdCleanupService.releaseHoldIfExpired(1L);
 
         assertThat(released).isEqualTo(1);
         assertThat(expiredHold.getStatus()).isEqualTo(HoldStatus.EXPIRED);
@@ -83,35 +77,47 @@ class HoldCleanupServiceTest {
     }
 
     @Test
-    void releaseExpiredHoldsForEvent_shouldSkipConfirmedHolds() {
-        setupClock();
+    void releaseHoldIfExpired_shouldSkipConfirmedHold() {
         Event event = createEvent();
         SeatHold confirmedHold = SeatHold.builder()
                 .id(1L).holdId(UUID.randomUUID()).event(event).userId("user-1")
                 .status(HoldStatus.CONFIRMED).expiresAt(LocalDateTime.now().minusMinutes(1))
                 .createdAt(LocalDateTime.now().minusMinutes(6)).build();
 
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
-        when(seatHoldRepository.findByEventIdAndStatusAndExpiresAtBefore(eq(1L), eq(HoldStatus.ACTIVE), any()))
-                .thenReturn(List.of(confirmedHold));
+        when(seatHoldRepository.findByIdWithLock(1L)).thenReturn(Optional.of(confirmedHold));
 
-        int released = holdCleanupService.releaseExpiredHoldsForEvent(1L);
+        int released = holdCleanupService.releaseHoldIfExpired(1L);
 
         assertThat(released).isEqualTo(0);
         verify(seatRepository, never()).findByHoldId(anyLong());
     }
 
     @Test
-    void releaseExpiredHoldsForEvent_shouldHandleNoExpiredHolds() {
-        setupClock();
-        Event event = createEvent();
+    void releaseHoldIfExpired_shouldReturnZeroWhenHoldNotFound() {
+        when(seatHoldRepository.findByIdWithLock(99L)).thenReturn(Optional.empty());
 
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
-        when(seatHoldRepository.findByEventIdAndStatusAndExpiresAtBefore(eq(1L), eq(HoldStatus.ACTIVE), any()))
-                .thenReturn(List.of());
-
-        int released = holdCleanupService.releaseExpiredHoldsForEvent(1L);
+        int released = holdCleanupService.releaseHoldIfExpired(99L);
 
         assertThat(released).isEqualTo(0);
+        verify(seatRepository, never()).findByHoldId(anyLong());
+    }
+
+    @Test
+    void releaseHoldIfExpired_shouldReturnZeroWhenHoldNotYetExpiredByTime() {
+        setupClock();
+        LocalDateTime mockedNow = LocalDateTime.ofInstant(
+                Instant.parse("2026-06-01T12:00:00Z"), ZoneId.systemDefault());
+        Event event = createEvent();
+        SeatHold stillValidHold = SeatHold.builder()
+                .id(1L).holdId(UUID.randomUUID()).event(event).userId("user-1")
+                .status(HoldStatus.ACTIVE).expiresAt(mockedNow.plusMinutes(5))
+                .createdAt(mockedNow).build();
+
+        when(seatHoldRepository.findByIdWithLock(1L)).thenReturn(Optional.of(stillValidHold));
+
+        int released = holdCleanupService.releaseHoldIfExpired(1L);
+
+        assertThat(released).isEqualTo(0);
+        verify(seatRepository, never()).findByHoldId(anyLong());
     }
 }

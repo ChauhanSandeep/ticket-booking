@@ -9,12 +9,10 @@ import com.ticketbooking.entity.enums.BookingStatus;
 import com.ticketbooking.entity.enums.HoldStatus;
 import com.ticketbooking.entity.enums.SeatStatus;
 import com.ticketbooking.exception.BookingAlreadyCanceledException;
-import com.ticketbooking.exception.DuplicateBookingException;
 import com.ticketbooking.exception.HoldExpiredException;
 import com.ticketbooking.exception.InvalidHoldStateException;
 import com.ticketbooking.exception.ResourceNotFoundException;
 import com.ticketbooking.repository.BookingRepository;
-import com.ticketbooking.repository.EventRepository;
 import com.ticketbooking.repository.SeatHoldRepository;
 import com.ticketbooking.repository.SeatRepository;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +33,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class BookingService {
 
-    private final EventRepository eventRepository;
     private final SeatRepository seatRepository;
     private final SeatHoldRepository seatHoldRepository;
     private final BookingRepository bookingRepository;
@@ -43,20 +40,12 @@ public class BookingService {
 
     @Transactional
     public BookingResponse confirmBooking(ConfirmBookingRequest request) {
-        // Look up the hold
-        SeatHold initialHold = seatHoldRepository.findByHoldId(request.getHoldId())
+        // Get the hold in pessimistic lock so that in background expiry cleanup or duplicate confirm cannot happen.
+        // Not using conditional update here because this is less throughput, less concurrency flow
+        SeatHold hold = seatHoldRepository.findByHoldIdWithLock(request.getHoldId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hold", request.getHoldId()));
 
-        Long eventId = initialHold.getEvent().getId();
-        Long holdInternalId = initialHold.getId();
-
-        // Acquire pessimistic lock on event row - same lock as hold creation
-        eventRepository.findByIdWithLock(eventId)
-                .orElseThrow(() -> new ResourceNotFoundException("Event", eventId));
-
-        // Re-fetch hold after lock acquisition to protect against cleanup race condition
-        SeatHold hold = seatHoldRepository.findById(holdInternalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Hold", request.getHoldId()));
+        Long eventId = hold.getEvent().getId();
 
         // Validate hold status
         if (hold.getStatus() == HoldStatus.CONFIRMED) {
@@ -72,12 +61,6 @@ public class BookingService {
             seatHoldRepository.save(hold);
             releaseSeatsForHold(hold);
             throw new HoldExpiredException(hold.getHoldId());
-        }
-
-        // Prevent double booking for same user and event
-        if (bookingRepository.existsByEventIdAndUserIdAndStatus(
-                hold.getEvent().getId(), hold.getUserId(), BookingStatus.CONFIRMED)) {
-            throw new DuplicateBookingException(hold.getEvent().getId(), hold.getUserId());
         }
 
         // Transition hold to CONFIRMED
@@ -155,14 +138,9 @@ public class BookingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingReference));
 
         Long eventId = initialBooking.getEvent().getId();
-        Long bookingId = initialBooking.getId();
 
-        // Acquire pessimistic lock on event row before checking status
-        eventRepository.findByIdWithLock(eventId)
-                .orElseThrow(() -> new ResourceNotFoundException("Event", eventId));
-
-        // Re-fetch after lock to protect against concurrent cancel requests
-        Booking booking = bookingRepository.findById(bookingId)
+        // Pessimistic lock on the booking row so that concurrent operations on the same booking cannot happen
+        Booking booking = bookingRepository.findByIdWithLock(initialBooking.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingReference));
 
         if (booking.getStatus() == BookingStatus.CANCELED) {

@@ -98,6 +98,7 @@ class ConfirmVsCleanupRaceTest {
         SeatHold hold = seatHoldRepository.findByHoldId(holdResponse.getHoldId()).orElseThrow();
         hold.setExpiresAt(LocalDateTime.now().minusSeconds(1));
         seatHoldRepository.save(hold);
+        Long holdInternalId = hold.getId();
 
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch doneLatch = new CountDownLatch(2);
@@ -124,7 +125,7 @@ class ConfirmVsCleanupRaceTest {
         executor.submit(() -> {
             try {
                 startLatch.await();
-                holdCleanupService.releaseExpiredHoldsForEvent(eventId);
+                holdCleanupService.releaseHoldIfExpired(holdInternalId);
                 cleanupRan.set(true);
             } catch (Exception e) {
                 // Unexpected

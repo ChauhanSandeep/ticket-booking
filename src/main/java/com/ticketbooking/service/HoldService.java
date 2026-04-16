@@ -63,7 +63,8 @@ public class HoldService {
                 .expiresAt(LocalDateTime.now(clock).plusMinutes(holdDurationMinutes))
                 .build();
         try {
-            // Flush to DB immediately to ensure the hold is created before the seats are claimed
+            // Flush to DB immediately to ensure the hold is created before the seats are
+            // claimed
             hold = seatHoldRepository.saveAndFlush(hold);
         } catch (DataIntegrityViolationException e) {
             throw new DuplicateHoldException(eventId, request.getUserId());

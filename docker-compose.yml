@@ -1,9 +1,13 @@
+# Compose file format version
 version: '3.8'
 
 services:
   app:
+    # Build image from the Dockerfile in this directory
     build: .
+    # host:container — expose container's 8080 on localhost:8080
     ports:
       - "8080:8080"
+    # Env vars injected into the container at runtime
     environment:
       - SPRING_PROFILES_ACTIVE=default

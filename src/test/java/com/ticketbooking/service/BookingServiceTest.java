@@ -11,7 +11,6 @@ import com.ticketbooking.entity.enums.HoldStatus;
 import com.ticketbooking.entity.enums.SeatStatus;
 import com.ticketbooking.exception.*;
 import com.ticketbooking.repository.BookingRepository;
-import com.ticketbooking.repository.EventRepository;
 import com.ticketbooking.repository.SeatHoldRepository;
 import com.ticketbooking.repository.SeatRepository;
 import org.junit.jupiter.api.Test;
@@ -37,8 +36,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class BookingServiceTest {
 
-    @Mock
-    private EventRepository eventRepository;
     @Mock
     private SeatRepository seatRepository;
     @Mock
@@ -82,10 +79,7 @@ class BookingServiceTest {
         Seat seat1 = Seat.builder().id(1L).event(event).seatNumber("1").status(SeatStatus.HELD).hold(hold).build();
         Seat seat2 = Seat.builder().id(2L).event(event).seatNumber("2").status(SeatStatus.HELD).hold(hold).build();
 
-        when(seatHoldRepository.findByHoldId(holdUuid)).thenReturn(Optional.of(hold));
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
-        when(seatHoldRepository.findById(1L)).thenReturn(Optional.of(hold));
-        when(bookingRepository.existsByEventIdAndUserIdAndStatus(1L, "user-1", BookingStatus.CONFIRMED)).thenReturn(false);
+        when(seatHoldRepository.findByHoldIdWithLock(holdUuid)).thenReturn(Optional.of(hold));
         when(seatHoldRepository.save(any(SeatHold.class))).thenReturn(hold);
         when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> {
             Booking b = inv.getArgument(0);
@@ -113,9 +107,7 @@ class BookingServiceTest {
                 .expiresAt(CLOCK_NOW.minusMinutes(1)) // Already expired relative to mocked clock
                 .createdAt(CLOCK_NOW.minusMinutes(6)).build();
 
-        when(seatHoldRepository.findByHoldId(hold.getHoldId())).thenReturn(Optional.of(hold));
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
-        when(seatHoldRepository.findById(1L)).thenReturn(Optional.of(hold));
+        when(seatHoldRepository.findByHoldIdWithLock(hold.getHoldId())).thenReturn(Optional.of(hold));
         when(seatHoldRepository.save(any(SeatHold.class))).thenReturn(hold);
         when(seatRepository.findByHoldId(1L)).thenReturn(List.of());
         when(seatRepository.saveAll(anyList())).thenReturn(List.of());
@@ -133,29 +125,11 @@ class BookingServiceTest {
                 .expiresAt(LocalDateTime.now().plusMinutes(5))
                 .createdAt(LocalDateTime.now()).build();
 
-        when(seatHoldRepository.findByHoldId(hold.getHoldId())).thenReturn(Optional.of(hold));
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
-        when(seatHoldRepository.findById(1L)).thenReturn(Optional.of(hold));
+        when(seatHoldRepository.findByHoldIdWithLock(hold.getHoldId())).thenReturn(Optional.of(hold));
 
         assertThatThrownBy(() -> bookingService.confirmBooking(
                 ConfirmBookingRequest.builder().holdId(hold.getHoldId()).build()))
                 .isInstanceOf(InvalidHoldStateException.class);
-    }
-
-    @Test
-    void confirmBooking_shouldThrowOnDuplicateBooking() {
-        setupClock();
-        Event event = createEvent();
-        SeatHold hold = createActiveHold(event);
-
-        when(seatHoldRepository.findByHoldId(hold.getHoldId())).thenReturn(Optional.of(hold));
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
-        when(seatHoldRepository.findById(1L)).thenReturn(Optional.of(hold));
-        when(bookingRepository.existsByEventIdAndUserIdAndStatus(1L, "user-1", BookingStatus.CONFIRMED)).thenReturn(true);
-
-        assertThatThrownBy(() -> bookingService.confirmBooking(
-                ConfirmBookingRequest.builder().holdId(hold.getHoldId()).build()))
-                .isInstanceOf(DuplicateBookingException.class);
     }
 
     @Test
@@ -170,8 +144,7 @@ class BookingServiceTest {
         Seat seat = Seat.builder().id(1L).event(event).seatNumber("1").status(SeatStatus.BOOKED).booking(booking).build();
 
         when(bookingRepository.findByBookingReference(bookingRef)).thenReturn(Optional.of(booking));
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
-        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.findByIdWithLock(1L)).thenReturn(Optional.of(booking));
         when(bookingRepository.save(any(Booking.class))).thenReturn(booking);
         when(seatRepository.findByBookingId(1L)).thenReturn(List.of(seat));
         when(seatRepository.saveAll(anyList())).thenReturn(List.of(seat));
@@ -191,8 +164,7 @@ class BookingServiceTest {
                 .createdAt(LocalDateTime.now()).canceledAt(LocalDateTime.now()).build();
 
         when(bookingRepository.findByBookingReference(bookingRef)).thenReturn(Optional.of(booking));
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(createEvent()));
-        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.findByIdWithLock(1L)).thenReturn(Optional.of(booking));
 
         assertThatThrownBy(() -> bookingService.cancelBooking(bookingRef))
                 .isInstanceOf(BookingAlreadyCanceledException.class);
