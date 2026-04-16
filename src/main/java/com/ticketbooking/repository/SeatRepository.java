@@ -6,18 +6,13 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
-
 import java.util.List;
 
-@Repository
 public interface SeatRepository extends JpaRepository<Seat, Long> {
 
     List<Seat> findByEventId(Long eventId);
 
     List<Seat> findByEventIdAndSeatNumberIn(Long eventId, List<String> seatNumbers);
-
-    List<Seat> findByEventIdAndStatus(Long eventId, SeatStatus status);
 
     List<Seat> findByHoldId(Long holdId);
 
