@@ -50,8 +50,8 @@ class HoldControllerIntegrationTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        bookingRepository.deleteAll();
         seatRepository.deleteAll();
+        bookingRepository.deleteAll();
         seatHoldRepository.deleteAll();
         eventRepository.deleteAll();
 

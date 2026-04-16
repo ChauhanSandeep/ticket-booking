@@ -3,7 +3,9 @@ package com.ticketbooking.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ticketbooking.dto.request.CreateEventRequest;
 import com.ticketbooking.dto.request.UpdateEventRequest;
+import com.ticketbooking.repository.BookingRepository;
 import com.ticketbooking.repository.EventRepository;
+import com.ticketbooking.repository.SeatHoldRepository;
 import com.ticketbooking.repository.SeatRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,9 +39,17 @@ class EventControllerIntegrationTest {
     @Autowired
     private SeatRepository seatRepository;
 
+    @Autowired
+    private SeatHoldRepository seatHoldRepository;
+
+    @Autowired
+    private BookingRepository bookingRepository;
+
     @BeforeEach
     void setUp() {
         seatRepository.deleteAll();
+        bookingRepository.deleteAll();
+        seatHoldRepository.deleteAll();
         eventRepository.deleteAll();
     }
 
