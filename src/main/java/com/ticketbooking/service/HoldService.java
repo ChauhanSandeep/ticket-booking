@@ -6,7 +6,6 @@ import com.ticketbooking.entity.Event;
 import com.ticketbooking.entity.Seat;
 import com.ticketbooking.entity.SeatHold;
 import com.ticketbooking.entity.enums.HoldStatus;
-import com.ticketbooking.entity.enums.SeatStatus;
 import com.ticketbooking.exception.DuplicateHoldException;
 import com.ticketbooking.exception.InvalidSeatException;
 import com.ticketbooking.exception.ResourceNotFoundException;
@@ -17,6 +16,7 @@ import com.ticketbooking.repository.SeatRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,41 +44,17 @@ public class HoldService {
 
     @Transactional
     public HoldResponse holdSeats(Long eventId, HoldSeatsRequest request) {
-        // Validate no duplicate seat numbers in request
         List<String> seatNumbers = request.getSeatNumbers();
         if (seatNumbers.size() != new HashSet<>(seatNumbers).size()) {
             throw new IllegalArgumentException("Duplicate seat numbers in request");
         }
 
-        // Acquire pessimistic write lock on event row - serializes all seat operations for this event
-        Event event = eventRepository.findByIdWithLock(eventId)
+        Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new ResourceNotFoundException("Event", eventId));
 
-        // Check for duplicate active hold for same user and event
-        if (seatHoldRepository.existsByEventIdAndUserIdAndStatus(eventId, request.getUserId(), HoldStatus.ACTIVE)) {
-            throw new DuplicateHoldException(eventId, request.getUserId());
-        }
-
-        // Fetch requested seats and validate they exist
-        List<Seat> seats = seatRepository.findByEventIdAndSeatNumberIn(eventId, seatNumbers);
-        Set<String> foundNumbers = seats.stream().map(Seat::getSeatNumber).collect(Collectors.toSet());
-        List<String> missingSeats = seatNumbers.stream()
-                .filter(num -> !foundNumbers.contains(num))
-                .toList();
-        if (!missingSeats.isEmpty()) {
-            throw new InvalidSeatException(missingSeats);
-        }
-
-        // Check all requested seats are available
-        List<String> unavailableSeats = seats.stream()
-                .filter(s -> s.getStatus() != SeatStatus.AVAILABLE)
-                .map(Seat::getSeatNumber)
-                .toList();
-        if (!unavailableSeats.isEmpty()) {
-            throw new SeatsUnavailableException(unavailableSeats);
-        }
-
-        // Create the hold record
+        // Insert the hold up-front. The UNIQUE (event_id, active_hold_key)
+        // constraint enforces "at most one ACTIVE hold per user per event"
+        // atomically — no need to hold a pessimistic lock on the event row.
         SeatHold hold = SeatHold.builder()
                 .holdId(UUID.randomUUID())
                 .event(event)
@@ -86,18 +62,43 @@ public class HoldService {
                 .status(HoldStatus.ACTIVE)
                 .expiresAt(LocalDateTime.now(clock).plusMinutes(holdDurationMinutes))
                 .build();
-        hold = seatHoldRepository.save(hold);
+        try {
+            // Flush to DB immediately to ensure the hold is created before the seats are claimed
+            hold = seatHoldRepository.saveAndFlush(hold);
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateHoldException(eventId, request.getUserId());
+        }
+
+        // Atomic compare-and-set: claim only seats still AVAILABLE. Concurrent
+        // hold attempts on overlapping seats see the same row lock only for the
+        // duration of this single UPDATE statement.
+        int claimed = seatRepository.claimSeats(eventId, seatNumbers, hold);
+        if (claimed != seatNumbers.size()) {
+            // Rollback the hold and throw an exception
+            throwClaimFailure(eventId, seatNumbers, hold);
+        }
+
         log.info("Hold created: holdId={}, userId={}, eventId={}, seats={}, expiresAt={}",
                 hold.getHoldId(), request.getUserId(), eventId, seatNumbers, hold.getExpiresAt());
 
-        // Mark seats as HELD
-        for (Seat seat : seats) {
-            seat.setStatus(SeatStatus.HELD);
-            seat.setHold(hold);
-        }
-        seatRepository.saveAll(seats);
-
         return toHoldResponse(hold, seatNumbers);
+    }
+
+    private void throwClaimFailure(Long eventId, List<String> seatNumbers, SeatHold hold) {
+        List<Seat> existing = seatRepository.findByEventIdAndSeatNumberIn(eventId, seatNumbers);
+        Set<String> foundNumbers = existing.stream().map(Seat::getSeatNumber).collect(Collectors.toSet());
+        List<String> missing = seatNumbers.stream()
+                .filter(num -> !foundNumbers.contains(num))
+                .toList();
+        if (!missing.isEmpty()) {
+            throw new InvalidSeatException(missing);
+        }
+        // All seats exist — anything not tied to our hold was taken by someone else.
+        List<String> unavailable = existing.stream()
+                .filter(s -> s.getHold() == null || !hold.getId().equals(s.getHold().getId()))
+                .map(Seat::getSeatNumber)
+                .toList();
+        throw new SeatsUnavailableException(unavailable);
     }
 
     @Transactional(readOnly = true)

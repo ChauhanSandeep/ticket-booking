@@ -20,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
@@ -81,20 +82,14 @@ class HoldServiceTest {
     void holdSeats_shouldSucceed() {
         setupClock();
         Event event = createTestEvent();
-        List<Seat> seats = List.of(
-                createSeat(event, "1", SeatStatus.AVAILABLE),
-                createSeat(event, "2", SeatStatus.AVAILABLE)
-        );
 
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
-        when(seatHoldRepository.existsByEventIdAndUserIdAndStatus(1L, "user-1", HoldStatus.ACTIVE)).thenReturn(false);
-        when(seatRepository.findByEventIdAndSeatNumberIn(1L, List.of("1", "2"))).thenReturn(seats);
-        when(seatHoldRepository.save(any(SeatHold.class))).thenAnswer(inv -> {
+        when(eventRepository.findById(1L)).thenReturn(Optional.of(event));
+        when(seatHoldRepository.saveAndFlush(any(SeatHold.class))).thenAnswer(inv -> {
             SeatHold h = inv.getArgument(0);
             h.setId(1L);
             return h;
         });
-        when(seatRepository.saveAll(anyList())).thenReturn(seats);
+        when(seatRepository.claimSeats(eq(1L), eq(List.of("1", "2")), any(SeatHold.class))).thenReturn(2);
 
         HoldResponse response = holdService.holdSeats(1L, HoldSeatsRequest.builder()
                 .userId("user-1").seatNumbers(List.of("1", "2")).build());
@@ -106,7 +101,7 @@ class HoldServiceTest {
 
     @Test
     void holdSeats_shouldThrowWhenEventNotFound() {
-        when(eventRepository.findByIdWithLock(99L)).thenReturn(Optional.empty());
+        when(eventRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> holdService.holdSeats(99L, HoldSeatsRequest.builder()
                 .userId("user-1").seatNumbers(List.of("1")).build()))
@@ -115,9 +110,11 @@ class HoldServiceTest {
 
     @Test
     void holdSeats_shouldThrowOnDuplicateHold() {
+        setupClock();
         Event event = createTestEvent();
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
-        when(seatHoldRepository.existsByEventIdAndUserIdAndStatus(1L, "user-1", HoldStatus.ACTIVE)).thenReturn(true);
+        when(eventRepository.findById(1L)).thenReturn(Optional.of(event));
+        when(seatHoldRepository.saveAndFlush(any(SeatHold.class)))
+                .thenThrow(new DataIntegrityViolationException("uq_active_hold_per_user_event"));
 
         assertThatThrownBy(() -> holdService.holdSeats(1L, HoldSeatsRequest.builder()
                 .userId("user-1").seatNumbers(List.of("1")).build()))
@@ -126,11 +123,18 @@ class HoldServiceTest {
 
     @Test
     void holdSeats_shouldThrowOnInvalidSeatNumbers() {
+        setupClock();
         Event event = createTestEvent();
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
-        when(seatHoldRepository.existsByEventIdAndUserIdAndStatus(1L, "user-1", HoldStatus.ACTIVE)).thenReturn(false);
+        when(eventRepository.findById(1L)).thenReturn(Optional.of(event));
+        when(seatHoldRepository.saveAndFlush(any(SeatHold.class))).thenAnswer(inv -> {
+            SeatHold h = inv.getArgument(0);
+            h.setId(1L);
+            return h;
+        });
+        // Only 1 seat exists so only 1 gets claimed; "99" is missing.
+        when(seatRepository.claimSeats(eq(1L), eq(List.of("1", "99")), any(SeatHold.class))).thenReturn(1);
         when(seatRepository.findByEventIdAndSeatNumberIn(1L, List.of("1", "99")))
-                .thenReturn(List.of(createSeat(event, "1", SeatStatus.AVAILABLE)));
+                .thenReturn(List.of(createSeat(event, "1", SeatStatus.HELD)));
 
         assertThatThrownBy(() -> holdService.holdSeats(1L, HoldSeatsRequest.builder()
                 .userId("user-1").seatNumbers(List.of("1", "99")).build()))
@@ -140,15 +144,23 @@ class HoldServiceTest {
 
     @Test
     void holdSeats_shouldThrowWhenSeatsUnavailable() {
+        setupClock();
         Event event = createTestEvent();
-        List<Seat> seats = List.of(
-                createSeat(event, "1", SeatStatus.AVAILABLE),
-                createSeat(event, "2", SeatStatus.HELD)
-        );
+        SeatHold otherHold = SeatHold.builder().id(99L).build();
+        Seat claimedByUs = createSeat(event, "1", SeatStatus.HELD);
+        Seat takenByOther = createSeat(event, "2", SeatStatus.HELD);
+        takenByOther.setHold(otherHold);
 
-        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
-        when(seatHoldRepository.existsByEventIdAndUserIdAndStatus(1L, "user-1", HoldStatus.ACTIVE)).thenReturn(false);
-        when(seatRepository.findByEventIdAndSeatNumberIn(1L, List.of("1", "2"))).thenReturn(seats);
+        when(eventRepository.findById(1L)).thenReturn(Optional.of(event));
+        when(seatHoldRepository.saveAndFlush(any(SeatHold.class))).thenAnswer(inv -> {
+            SeatHold h = inv.getArgument(0);
+            h.setId(1L);
+            claimedByUs.setHold(h);
+            return h;
+        });
+        when(seatRepository.claimSeats(eq(1L), eq(List.of("1", "2")), any(SeatHold.class))).thenReturn(1);
+        when(seatRepository.findByEventIdAndSeatNumberIn(1L, List.of("1", "2")))
+                .thenReturn(List.of(claimedByUs, takenByOther));
 
         assertThatThrownBy(() -> holdService.holdSeats(1L, HoldSeatsRequest.builder()
                 .userId("user-1").seatNumbers(List.of("1", "2")).build()))

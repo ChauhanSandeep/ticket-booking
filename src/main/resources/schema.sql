@@ -18,9 +18,11 @@ CREATE TABLE IF NOT EXISTS seat_holds (
     event_id BIGINT NOT NULL,
     user_id VARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    active_hold_key VARCHAR(255),
     expires_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP NOT NULL,
     CONSTRAINT uq_hold_id UNIQUE (hold_id),
+    CONSTRAINT uq_active_hold_per_user_event UNIQUE (event_id, active_hold_key),
     CONSTRAINT fk_hold_event FOREIGN KEY (event_id) REFERENCES events(id)
 );
 

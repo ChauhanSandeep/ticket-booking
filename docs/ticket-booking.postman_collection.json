@@ -1,0 +1,262 @@
+{
+  "info": {
+    "name": "Ticket Booking API",
+    "description": "Collection for the Ticket Booking System. Start the app with `docker compose up --build` or `./gradlew bootRun`, then import this file into Postman.\n\nUses collection variables — set `baseUrl` once, and capture `eventId`, `holdId`, `bookingReference`, `userId` from responses.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "c1b9f2d4-a2e4-4a3f-9f1e-ticketbooking0001"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "eventId", "value": "1", "type": "string" },
+    { "key": "holdId", "value": "", "type": "string" },
+    { "key": "bookingReference", "value": "", "type": "string" },
+    { "key": "userId", "value": "user-1", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Events",
+      "item": [
+        {
+          "name": "List all events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "events"]
+            },
+            "description": "Returns all events. Seed data includes 2 events on first run."
+          },
+          "response": []
+        },
+        {
+          "name": "Get event by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/events/{{eventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "events", "{{eventId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.id) pm.collectionVariables.set('eventId', data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Autumn Tech Summit 2026\",\n  \"description\": \"Annual autumn technology summit\",\n  \"location\": \"New York, NY\",\n  \"eventDate\": \"2026-10-20T09:00:00\",\n  \"totalSeats\": 50\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "events"]
+            },
+            "description": "Creates an event and auto-generates numbered seats. Auto-captures the new `eventId` into collection variables."
+          },
+          "response": []
+        },
+        {
+          "name": "Update event",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Event Name\",\n  \"description\": \"Updated description\",\n  \"location\": \"Updated Location\",\n  \"eventDate\": \"2026-12-01T18:00:00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/events/{{eventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "events", "{{eventId}}"]
+            },
+            "description": "Updates name, description, location, and date. Total seats cannot be changed."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete event",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/events/{{eventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "events", "{{eventId}}"]
+            },
+            "description": "Fails if event has active holds or confirmed bookings."
+          },
+          "response": []
+        },
+        {
+          "name": "Get event availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/events/{{eventId}}/availability",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "events", "{{eventId}}", "availability"]
+            },
+            "description": "Event details with availableCount, heldCount, bookedCount, and per-seat status."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Holds",
+      "item": [
+        {
+          "name": "Hold specific seats",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.holdId) pm.collectionVariables.set('holdId', data.holdId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"seatNumbers\": [\"1\", \"2\", \"3\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/events/{{eventId}}/holds",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "events", "{{eventId}}", "holds"]
+            },
+            "description": "Creates a 5-minute temporary hold on the specified seats. Auto-captures `holdId` into collection variables.\n\nMax 10 seats per request."
+          },
+          "response": []
+        },
+        {
+          "name": "Get hold status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/holds/{{holdId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "holds", "{{holdId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "item": [
+        {
+          "name": "Confirm booking from hold",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.bookingReference) pm.collectionVariables.set('bookingReference', data.bookingReference);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holdId\": \"{{holdId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings"]
+            },
+            "description": "Converts an ACTIVE hold into a permanent booking. Auto-captures `bookingReference`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get booking details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/{{bookingReference}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "{{bookingReference}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get user bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/bookings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "users", "{{userId}}", "bookings"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel booking",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/{{bookingReference}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "{{bookingReference}}", "cancel"]
+            },
+            "description": "Soft-deletes (marks as CANCELED) and releases seats back to AVAILABLE."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

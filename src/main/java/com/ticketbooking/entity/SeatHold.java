@@ -9,7 +9,10 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Entity
-@Table(name = "seat_holds")
+@Table(name = "seat_holds", uniqueConstraints = {
+        @UniqueConstraint(name = "uq_active_hold_per_user_event",
+                          columnNames = {"event_id", "active_hold_key"})
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -36,6 +39,12 @@ public class SeatHold {
     @Builder.Default
     private HoldStatus status = HoldStatus.ACTIVE;
 
+    // Equals userId while status=ACTIVE, NULL otherwise. Combined with a
+    // UNIQUE (event_id, active_hold_key) constraint, NULL-distinctness gives
+    // us "at most one ACTIVE hold per user per event" without a partial index.
+    @Column(name = "active_hold_key")
+    private String activeHoldKey;
+
     @Column(name = "expires_at", nullable = false)
     private LocalDateTime expiresAt;
 
@@ -45,6 +54,17 @@ public class SeatHold {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        syncActiveHoldKey();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        syncActiveHoldKey();
+    }
+
+    private void syncActiveHoldKey() {
+        // Ensure that the active hold key is always the user id while the hold is active
+        this.activeHoldKey = (status == HoldStatus.ACTIVE) ? userId : null;
     }
 
     @Override
