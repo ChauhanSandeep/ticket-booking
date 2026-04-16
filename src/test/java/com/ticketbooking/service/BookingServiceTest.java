@@ -51,23 +51,25 @@ class BookingServiceTest {
     @InjectMocks
     private BookingService bookingService;
 
+    private static final Instant FIXED_INSTANT = Instant.parse("2026-06-01T12:00:00Z");
+    private static final LocalDateTime CLOCK_NOW = LocalDateTime.ofInstant(FIXED_INSTANT, ZoneId.systemDefault());
+
     private void setupClock() {
-        Instant fixedInstant = Instant.parse("2026-06-01T12:00:00Z");
-        when(clock.instant()).thenReturn(fixedInstant);
+        when(clock.instant()).thenReturn(FIXED_INSTANT);
         when(clock.getZone()).thenReturn(ZoneId.systemDefault());
     }
 
     private Event createEvent() {
         return Event.builder().id(1L).name("Concert").location("NYC")
-                .eventDate(LocalDateTime.now().plusDays(30)).totalSeats(10)
-                .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).build();
+                .eventDate(CLOCK_NOW.plusDays(30)).totalSeats(10)
+                .createdAt(CLOCK_NOW).updatedAt(CLOCK_NOW).build();
     }
 
     private SeatHold createActiveHold(Event event) {
         return SeatHold.builder().id(1L).holdId(UUID.randomUUID()).event(event)
                 .userId("user-1").status(HoldStatus.ACTIVE)
-                .expiresAt(LocalDateTime.now().plusMinutes(5))
-                .createdAt(LocalDateTime.now()).build();
+                .expiresAt(CLOCK_NOW.plusMinutes(5))
+                .createdAt(CLOCK_NOW).build();
     }
 
     @Test
@@ -108,8 +110,8 @@ class BookingServiceTest {
         Event event = createEvent();
         SeatHold hold = SeatHold.builder().id(1L).holdId(UUID.randomUUID()).event(event)
                 .userId("user-1").status(HoldStatus.ACTIVE)
-                .expiresAt(LocalDateTime.now().minusMinutes(1)) // Already expired
-                .createdAt(LocalDateTime.now().minusMinutes(6)).build();
+                .expiresAt(CLOCK_NOW.minusMinutes(1)) // Already expired relative to mocked clock
+                .createdAt(CLOCK_NOW.minusMinutes(6)).build();
 
         when(seatHoldRepository.findByHoldId(hold.getHoldId())).thenReturn(Optional.of(hold));
         when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
@@ -142,6 +144,7 @@ class BookingServiceTest {
 
     @Test
     void confirmBooking_shouldThrowOnDuplicateBooking() {
+        setupClock();
         Event event = createEvent();
         SeatHold hold = createActiveHold(event);
 

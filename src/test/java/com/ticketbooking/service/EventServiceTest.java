@@ -181,10 +181,10 @@ class EventServiceTest {
         when(eventRepository.findById(1L)).thenReturn(Optional.of(event));
         when(seatHoldRepository.existsByEventIdAndStatus(1L, HoldStatus.ACTIVE)).thenReturn(false);
         when(bookingRepository.existsByEventIdAndStatus(1L, BookingStatus.CONFIRMED)).thenReturn(false);
-        when(seatRepository.findByEventId(1L)).thenReturn(Collections.emptyList());
 
         eventService.deleteEvent(1L);
 
+        verify(seatRepository).deleteByEventId(1L);
         verify(eventRepository).delete(event);
     }
 }
