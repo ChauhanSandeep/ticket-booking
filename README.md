@@ -62,6 +62,15 @@ Interactive API documentation is available at `http://localhost:8080/swagger-ui.
 
 OpenAPI spec: `http://localhost:8080/v3/api-docs`
 
+## Documentation
+
+Additional documentation lives in the [docs/](docs/) folder:
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design, hold-then-confirm pattern, concurrency strategy, and database schema.
+- [docs/RUNBOOK.md](docs/RUNBOOK.md) — operational guide for running, testing, and troubleshooting.
+- [docs/openapi.json](docs/openapi.json) — exported OpenAPI 3 specification.
+- [docs/ticket-booking.postman_collection.json](docs/ticket-booking.postman_collection.json) — Postman collection for exercising the API.
+
 ## API Reference
 
 ### Events
