@@ -11,6 +11,7 @@ import com.ticketbooking.dto.request.CreateEventRequest;
 import com.ticketbooking.dto.response.EventResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -61,6 +62,7 @@ class ConcurrentHoldTest {
     }
 
     @Test
+    @Timeout(30)
     void twentyThreadsCompeteForSameSeat_onlyOneSucceeds() throws InterruptedException {
         int threadCount = 20;
         CountDownLatch startLatch = new CountDownLatch(1);
@@ -101,6 +103,7 @@ class ConcurrentHoldTest {
     }
 
     @Test
+    @Timeout(30)
     void fiveThreadsSameUserSameEvent_onlyOneSucceeds() throws InterruptedException {
         int threadCount = 5;
         CountDownLatch startLatch = new CountDownLatch(1);
@@ -137,6 +140,7 @@ class ConcurrentHoldTest {
     }
 
     @Test
+    @Timeout(30)
     void tenThreadsHoldDistinctSeats_allSucceed() throws InterruptedException {
         int threadCount = 10;
         CountDownLatch startLatch = new CountDownLatch(1);

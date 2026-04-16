@@ -18,6 +18,7 @@ import com.ticketbooking.service.HoldCleanupService;
 import com.ticketbooking.service.HoldService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -85,6 +86,7 @@ class ConfirmVsCleanupRaceTest {
     }
 
     @Test
+    @Timeout(30)
     void confirmAndCleanupRace_noDataCorruption() throws InterruptedException {
         // Create a hold and immediately expire it
         HoldResponse holdResponse = holdService.holdSeats(eventId, HoldSeatsRequest.builder()
