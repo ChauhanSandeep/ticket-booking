@@ -128,15 +128,23 @@ public class BookingService {
 
     @Transactional
     public BookingResponse cancelBooking(UUID bookingReference) {
-        Booking booking = bookingRepository.findByBookingReference(bookingReference)
+        Booking initialBooking = bookingRepository.findByBookingReference(bookingReference)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingReference));
+
+        Long eventId = initialBooking.getEvent().getId();
+        Long bookingId = initialBooking.getId();
+
+        // Acquire pessimistic lock on event row before checking status
+        eventRepository.findByIdWithLock(eventId)
+                .orElseThrow(() -> new ResourceNotFoundException("Event", eventId));
+
+        // Re-fetch after lock to protect against concurrent cancel requests
+        Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingReference));
 
         if (booking.getStatus() == BookingStatus.CANCELED) {
             throw new BookingAlreadyCanceledException(bookingReference);
         }
-
-        // Acquire pessimistic lock on event row
-        eventRepository.findByIdWithLock(booking.getEvent().getId());
 
         // Soft delete: mark as canceled
         booking.setStatus(BookingStatus.CANCELED);

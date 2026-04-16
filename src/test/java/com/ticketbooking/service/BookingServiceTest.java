@@ -154,6 +154,7 @@ class BookingServiceTest {
 
         when(bookingRepository.findByBookingReference(bookingRef)).thenReturn(Optional.of(booking));
         when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(event));
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
         when(bookingRepository.save(any(Booking.class))).thenReturn(booking);
         when(seatRepository.findByBookingId(1L)).thenReturn(List.of(seat));
         when(seatRepository.saveAll(anyList())).thenReturn(List.of(seat));
@@ -173,6 +174,8 @@ class BookingServiceTest {
                 .createdAt(LocalDateTime.now()).canceledAt(LocalDateTime.now()).build();
 
         when(bookingRepository.findByBookingReference(bookingRef)).thenReturn(Optional.of(booking));
+        when(eventRepository.findByIdWithLock(1L)).thenReturn(Optional.of(createEvent()));
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
 
         assertThatThrownBy(() -> bookingService.cancelBooking(bookingRef))
                 .isInstanceOf(BookingAlreadyCanceledException.class);
