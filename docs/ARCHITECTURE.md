@@ -101,41 +101,52 @@ When multiple users try to book seats for the same event simultaneously, classic
 - A user confirms a hold while the cleanup service tries to expire it → inconsistent state
 - Many concurrent holds could collectively exceed `totalSeats`
 
-### The Solution: Pessimistic Locking on Event Row
+### The Solution: Narrow Row-Level Locks per Operation
 
-All seat-modifying operations acquire a **pessimistic write lock** (`SELECT ... FOR UPDATE`) on the event row before making any changes. This serializes operations **per event** while allowing operations on different events to proceed concurrently.
+Rather than serialising every seat-modifying operation behind a single event-row lock, each operation uses the narrowest mechanism that still prevents overbooking:
+
+- **Holding seats** uses a conditional `UPDATE ... WHERE status = AVAILABLE` (compare-and-set) on the seat rows, so two concurrent hold attempts for the same seat cannot both succeed. A UNIQUE `(event_id, active_hold_key)` constraint on `seat_holds` blocks duplicate active holds per user.
+- **Confirming a booking** takes a pessimistic write lock on the **hold row** being confirmed, serialising that hold against the cleanup job.
+- **Cleaning up an expired hold** takes the same pessimistic write lock on the **hold row**.
+- **Cancelling a booking** takes a pessimistic write lock on the **booking row**.
 
 ```java
+// seat_holds row lock — used by confirm + cleanup
 @Lock(LockModeType.PESSIMISTIC_WRITE)
-@Query("SELECT e FROM Event e WHERE e.id = :eventId")
-Optional<Event> findByIdWithLock(@Param("eventId") Long eventId);
+@Query("SELECT h FROM SeatHold h WHERE h.id = :id")
+Optional<SeatHold> findByIdWithLock(@Param("id") Long id);
+
+// atomic seat claim — used by hold creation
+@Modifying
+@Query("UPDATE Seat s SET s.status = HELD, s.hold = :hold " +
+       "WHERE s.event.id = :eventId AND s.seatNumber IN :seatNumbers " +
+       "AND s.status = AVAILABLE")
+int claimSeats(...);
 ```
 
 ### What gets serialized
 
 
-| Operation            | Acquires Event Lock? | Why                                         |
-| -------------------- | -------------------- | ------------------------------------------- |
-| Hold seats           | Yes                  | Must check and update seat availability     |
-| Confirm booking      | Yes                  | Must validate hold and transition seats     |
-| Cancel booking       | Yes                  | Must release seats back to available        |
-| Expired hold cleanup | Yes (per event)      | Must release seats without racing confirm   |
-| Read availability    | No                   | Read-only, eventual consistency acceptable  |
-| Event CRUD update    | No (uses @Version)   | Optimistic locking sufficient for admin ops |
+| Operation            | Lock acquired                   | Why                                             |
+| -------------------- | ------------------------------- | ----------------------------------------------- |
+| Hold seats           | None (atomic CAS UPDATE)        | Conditional update claims only AVAILABLE seats  |
+| Confirm booking      | Pessimistic lock on hold row    | Must serialise against cleanup of the same hold |
+| Cancel booking       | Pessimistic lock on booking row | Must prevent duplicate cancellation             |
+| Expired hold cleanup | Pessimistic lock on hold row    | Must serialise against confirm of the same hold |
+| Read availability    | None                            | Read-only, eventual consistency acceptable      |
+| Event CRUD update    | Optimistic (`@Version`)         | Sufficient for admin ops                        |
 
 
-### Why pessimistic, not optimistic?
+### Why not a single event-row lock?
 
+A single pessimistic lock on the event row would serialise every hold, confirm, cancel, and cleanup against the same event — even when the operations touch completely different seats or holds. The chosen mix keeps the hot path (hold creation) lock-free at the application level and limits pessimistic locking to the few places where two specific operations can legitimately race on the same row.
 
-| Concern                | Pessimistic                | Optimistic                      |
-| ---------------------- | -------------------------- | ------------------------------- |
-| Conflict handling      | Block until lock released  | Detect at commit, retry         |
-| Under high contention  | Threads queue, all succeed | Cascade of retries, wasted work |
-| Complexity             | Lock once, proceed         | Retry loops, backoff logic      |
-| Event row modification | Not required               | Must artificially bump version  |
-
-
-For seat operations, we are not modifying the event row itself - only seat and hold rows. Optimistic locking would require artificially bumping the event version on every hold, which is semantically wrong and creates a hot-spot. Pessimistic locking is the natural fit.
+| Concern                        | Event-row pessimistic lock       | Current approach                         |
+| ------------------------------ | -------------------------------- | ---------------------------------------- |
+| Throughput per event           | Serialised — one op at a time    | Parallel holds on disjoint seats         |
+| Duplicate-hold protection      | Application check inside lock    | UNIQUE constraint on `seat_holds`        |
+| Seat-claim atomicity           | Read-then-write inside lock      | Single conditional `UPDATE` (CAS)        |
+| Confirm vs. cleanup race       | Same event lock on both sides    | Same hold-row lock on both sides         |
 
 ### Race Condition: Confirm vs Cleanup
 
@@ -145,16 +156,15 @@ The most subtle race condition is between a user confirming a hold and the clean
 Timeline:
   T1: Cleanup scans, finds hold H1 expired (status=ACTIVE, expires_at in past)
   T2: User sends confirm for hold H1
-  T3: One thread acquires the event lock, the other blocks
-  T4: Winner proceeds, loser gets stale data
+  T3: One thread acquires the pessimistic lock on hold H1, the other blocks
+  T4: Winner proceeds, loser re-reads the hold and sees the updated status
 ```
 
 **Protection mechanisms:**
 
-1. Both operations acquire the same event lock → they never run concurrently for the same event
-2. Confirm re-fetches the hold *after* acquiring the lock → sees cleanup's changes
-3. Cleanup re-checks hold status after acquiring the lock → sees confirm's changes
-4. Cleanup uses `if (hold.getStatus() != ACTIVE) continue` as a guard
+1. Confirm and cleanup both lock the same `seat_holds` row → they never run concurrently for the same hold
+2. Confirm re-reads the hold *after* acquiring the lock → sees cleanup's changes
+3. Cleanup re-checks hold status after acquiring the lock → sees confirm's changes and bails via `if (hold.getStatus() != ACTIVE) return 0`
 
 ## Hold-Then-Confirm Workflow
 
@@ -164,12 +174,14 @@ User                    System                          Database
  │  POST /holds           │                               │
  │  {seats: [1,2,3]}      │                               │
  │───────────────────────>│                               │
- │                        │  Lock event row               │
+ │                        │  Insert hold row              │
+ │                        │  (UNIQUE constraint blocks    │
+ │                        │   duplicate active hold)      │
  │                        │──────────────────────────────>│
- │                        │  Check seats available        │
- │                        │  Create hold (5 min expiry)   │
- │                        │  Mark seats as HELD           │
- │                        │  Commit (release lock)        │
+ │                        │  Atomic UPDATE seats          │
+ │                        │  SET status=HELD              │
+ │                        │  WHERE status=AVAILABLE       │
+ │                        │  Commit                       │
  │  201 {holdId: abc}     │                               │
  │<───────────────────────│                               │
  │                        │                               │
@@ -179,7 +191,7 @@ User                    System                          Database
  │  POST /bookings        │                               │
  │  {holdId: abc}         │                               │
  │───────────────────────>│                               │
- │                        │  Lock event row               │
+ │                        │  Lock hold row (FOR UPDATE)   │
  │                        │──────────────────────────────>│
  │                        │  Validate hold ACTIVE         │
  │                        │  Check not expired            │
@@ -198,9 +210,9 @@ Scheduler (every 60s)     System                          Database
  │                        │                                │
  │  Trigger cleanup       │                                │
  │───────────────────────>│                                │
- │                        │  Find events with expired holds│
- │                        │  For each event:               │
- │                        │    Lock event row              │
+ │                        │  Find holds expired + ACTIVE   │
+ │                        │  For each hold (own tx):       │
+ │                        │    Lock hold row (FOR UPDATE)  │
  │                        │    Re-check hold still ACTIVE  │
  │                        │    Hold: ACTIVE → EXPIRED      │
  │                        │    Seats: HELD → AVAILABLE     │
@@ -213,9 +225,9 @@ Scheduler (every 60s)     System                          Database
 
 | Rule                                    | Enforced By                                     |
 | --------------------------------------- | ----------------------------------------------- |
-| Seats never overbooked                  | Pessimistic lock + individual seat status check |
-| No duplicate active hold per user/event | Application check inside locked transaction     |
-| No duplicate confirmed booking          | Application check inside locked transaction     |
+| Seats never overbooked                  | Conditional `UPDATE ... WHERE status=AVAILABLE` |
+| No duplicate active hold per user/event | UNIQUE (event_id, active_hold_key) constraint   |
+| No duplicate confirmed booking          | Pessimistic lock on hold row + status re-check  |
 | Hold expires after 5 minutes            | Scheduled cleanup + confirm-time expiry check   |
 | Soft deletes for bookings               | Status field (CONFIRMED/CANCELED)               |
 | totalSeats > 0                          | DB CHECK constraint + validation annotation     |

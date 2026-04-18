@@ -166,10 +166,12 @@ curl -X PATCH http://localhost:8080/api/v1/bookings/{bookingReference}/cancel
 
 ### Concurrency Strategy
 
-The system uses **pessimistic locking** (`SELECT ... FOR UPDATE`) on the event row to serialize all seat-modifying operations per event. This prevents overbooking without requiring retry loops.
+The system uses **row-level locking at the narrowest granularity needed** per operation to prevent overbooking without retry loops:
 
-- Hold creation, booking confirmation, cancellation, and expired hold cleanup all acquire the same lock
-- Different events can be processed concurrently (lock is per-event)
+- Hold creation claims seats atomically via a conditional `UPDATE ... WHERE status = AVAILABLE` (compare-and-set) and relies on a UNIQUE `(event_id, active_hold_key)` constraint to block duplicate holds per user — no event lock is taken
+- Booking confirmation and expired-hold cleanup each take a pessimistic lock on the specific **hold row** they are working on, serialising only those two operations for the same hold
+- Booking cancellation takes a pessimistic lock on the **booking row**
+- Different events — and different holds within the same event — proceed concurrently
 - Optimistic locking (`@Version`) is used separately for event CRUD updates
 
 ### Hold-Then-Confirm Pattern
